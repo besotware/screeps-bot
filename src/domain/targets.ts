@@ -64,6 +64,44 @@ export function selectEnergySink(sinks: readonly EnergySink[]): EnergySink | und
   return rankEnergySinks(sinks)[0];
 }
 
+/** Somewhere a hauler can take energy from. */
+export interface EnergyPickup {
+  readonly id: string;
+  /** "dropped" | "tombstone" | "container" | "storage" */
+  readonly kind: string;
+  /** Energy available to take. */
+  readonly amount: number;
+  readonly range: number;
+}
+
+/** Pickup kinds that decay, and so should be cleared before stored energy. */
+const PERISHABLE = new Set(["dropped", "tombstone"]);
+
+/**
+ * Pick where a hauler should collect from.
+ *
+ * Dropped energy and tombstones decay every tick, so they are collected first
+ * even when a fuller container is closer -- energy left on the floor is energy
+ * already being lost. Within a tier, prefer the biggest pile, then the nearest:
+ * a hauler that fills up in one stop beats one that makes three.
+ */
+export function selectPickup(
+  pickups: readonly EnergyPickup[],
+  minimumAmount = 0,
+): EnergyPickup | undefined {
+  const viable = pickups.filter((p) => p.amount > 0 && p.amount >= minimumAmount);
+  if (viable.length === 0) return undefined;
+
+  const perishable = viable.filter((p) => PERISHABLE.has(p.kind));
+  const pool = perishable.length > 0 ? perishable : viable;
+
+  return pool.reduce((best, p) => {
+    if (p.amount !== best.amount) return p.amount > best.amount ? p : best;
+    if (p.range !== best.range) return p.range < best.range ? p : best;
+    return p.id < best.id ? p : best;
+  });
+}
+
 /**
  * Pick a source to mine.
  *
