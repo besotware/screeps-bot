@@ -1,0 +1,312 @@
+name: CI
+
+# PHASE 0 -- REPORTING MODE.
+#
+# Every scanner below runs and reports, and nothing fails the build. The steps
+# that will become merge gates are marked with `continue-on-error: true` and a
+# PHASE-1-GATE comment. Converting this workflow to enforcing means deleting
+# those two lines per step and nothing else -- no re-plumbing, no new jobs.
+#
+# The baseline numbers these jobs print are recorded in docs/PROGRESS.md.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Deny by default at the workflow level; every job re-grants only what it needs.
+# Never rely on the ambient GITHUB_TOKEN scope.
+permissions: {}
+
+# A newer push to the same ref makes the older run irrelevant.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "24"
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      # npm ci only. It installs strictly from the lockfile and fails if
+      # package.json and the lockfile disagree; npm install would silently
+      # resolve new versions inside the build.
+      - name: Install dependencies
+        run: npm ci
+
+      # Proves .npmrc actually took effect on the runner rather than only on a
+      # developer's machine. A control we have not watched work is not a control.
+      - name: Verify install scripts are disabled
+        run: |
+          actual="$(npm config get ignore-scripts)"
+          echo "npm config ignore-scripts = ${actual}"
+          if [ "${actual}" != "true" ]; then
+            echo "::error::ignore-scripts is '${actual}', expected 'true'"
+            exit 1
+          fi
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build bundle
+        run: npm run build
+
+      - name: Report bundle size
+        run: |
+          bytes="$(wc -c < dist/main.js)"
+          echo "### Build" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Metric | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| --- | --- |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| dist/main.js | ${bytes} bytes |" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bundle
+          path: dist/main.js
+          retention-days: 7
+
+  test:
+    name: Unit tests
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests with coverage
+        # PHASE-1-GATE: delete this line to make failing tests block the merge.
+        continue-on-error: true
+        run: npm run test:coverage -- --ci
+
+      - name: Report test and coverage baseline
+        if: always()
+        run: |
+          node - <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          const fs = require("node:fs");
+          const read = (p) => { try { return JSON.parse(fs.readFileSync(p, "utf8")); } catch { return null; } };
+          const summary = read("coverage/coverage-summary.json");
+          console.log("### Unit tests\n");
+          if (!summary) { console.log("Coverage summary not produced."); process.exit(0); }
+          const t = summary.total;
+          console.log("| Metric | % | Covered / Total |");
+          console.log("| --- | --- | --- |");
+          for (const key of ["statements", "branches", "functions", "lines"]) {
+            const m = t[key];
+            console.log(`| ${key} | ${m.pct}% | ${m.covered} / ${m.total} |`);
+          }
+          NODE
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage
+          path: coverage/
+          retention-days: 7
+
+  lint:
+    name: ESLint
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        # PHASE-1-GATE: delete this line to make lint errors block the merge.
+        continue-on-error: true
+        run: npx eslint . --format json --output-file eslint-report.json
+
+      - name: Report lint findings
+        if: always()
+        run: |
+          node - <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          const fs = require("node:fs");
+          let results = [];
+          try { results = JSON.parse(fs.readFileSync("eslint-report.json", "utf8")); } catch {}
+          const errors = results.reduce((n, f) => n + f.errorCount, 0);
+          const warnings = results.reduce((n, f) => n + f.warningCount, 0);
+          console.log("### ESLint\n");
+          console.log("| Severity | Count |");
+          console.log("| --- | --- |");
+          console.log(`| errors | ${errors} |`);
+          console.log(`| warnings | ${warnings} |`);
+          NODE
+
+  semgrep:
+    name: Semgrep (SAST)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Semgrep
+        # Version pinned. Phase 2 moves this into the hermetic build image.
+        run: pip install --disable-pip-version-check semgrep==1.175.0
+
+      - name: Run Semgrep
+        # PHASE-1-GATE: delete this line to make findings block the merge.
+        continue-on-error: true
+        run: |
+          semgrep scan \
+            --config p/typescript \
+            --config p/javascript \
+            --config p/security-audit \
+            --config p/secrets \
+            --metrics=off \
+            --json --output semgrep.json \
+            --error
+
+      - name: Report Semgrep findings
+        if: always()
+        run: |
+          node - <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          const fs = require("node:fs");
+          let report = { results: [], errors: [] };
+          try { report = JSON.parse(fs.readFileSync("semgrep.json", "utf8")); } catch {}
+          const bySeverity = {};
+          for (const r of report.results ?? []) {
+            const sev = r.extra?.severity ?? "UNKNOWN";
+            bySeverity[sev] = (bySeverity[sev] ?? 0) + 1;
+          }
+          console.log("### Semgrep\n");
+          console.log(`Total findings: **${(report.results ?? []).length}**\n`);
+          console.log("| Severity | Count |");
+          console.log("| --- | --- |");
+          for (const [sev, n] of Object.entries(bySeverity)) console.log(`| ${sev} | ${n} |`);
+          if (!Object.keys(bySeverity).length) console.log("| (none) | 0 |");
+          NODE
+
+  osv:
+    name: OSV-Scanner (SCA)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Run OSV-Scanner
+        # PHASE-1-GATE: delete this line to make vulnerable deps block the merge.
+        continue-on-error: true
+        uses: google/osv-scanner-action@9bb69575e74019c2ad085a1860787043adf47ccb # v2.2.4
+        with:
+          scan-args: |-
+            --lockfile=package-lock.json
+            --format=json
+            --output=osv.json
+
+      - name: Report OSV findings
+        if: always()
+        run: |
+          node - <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          const fs = require("node:fs");
+          let report = { results: [] };
+          try { report = JSON.parse(fs.readFileSync("osv.json", "utf8")); } catch {}
+          let packages = 0, vulns = 0;
+          for (const result of report.results ?? []) {
+            for (const p of result.packages ?? []) {
+              if ((p.vulnerabilities ?? []).length) packages += 1;
+              vulns += (p.vulnerabilities ?? []).length;
+            }
+          }
+          console.log("### OSV-Scanner\n");
+          console.log("| Metric | Count |");
+          console.log("| --- | --- |");
+          console.log(`| vulnerable packages | ${packages} |`);
+          console.log(`| advisories | ${vulns} |`);
+          NODE
+
+  gitleaks:
+    name: gitleaks (secrets)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      # Secret scanning needs the whole history: a secret committed and later
+      # removed is still a leaked secret, and a shallow clone hides it.
+      - name: Checkout full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      # Installed from a pinned release and checksum-verified rather than via a
+      # third-party action, so the binary we execute is one we can name.
+      - name: Install gitleaks
+        env:
+          GITLEAKS_VERSION: "8.30.1"
+          GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+        run: |
+          set -euo pipefail
+          url="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -sSfL "$url" -o gitleaks.tar.gz
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
+          sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      # Two scans, because they answer different questions. `git` walks every
+      # commit that has ever existed; `dir` inspects the working tree as it
+      # stands, catching a secret that is present but never committed.
+      - name: Scan full history
+        # PHASE-1-GATE: delete this line to make leaked secrets block the merge.
+        continue-on-error: true
+        run: gitleaks git --redact --report-format json --report-path gitleaks-history.json --exit-code 1 .
+
+      - name: Scan working tree
+        # PHASE-1-GATE: delete this line to make leaked secrets block the merge.
+        continue-on-error: true
+        run: gitleaks dir --redact --report-format json --report-path gitleaks-tree.json --exit-code 1 .
+
+      - name: Report gitleaks findings
+        if: always()
+        run: |
+          node - <<'NODE' >> "$GITHUB_STEP_SUMMARY"
+          const fs = require("node:fs");
+          const count = (p) => { try { return JSON.parse(fs.readFileSync(p, "utf8")).length; } catch { return 0; } };
+          console.log("### gitleaks\n");
+          console.log("| Scan | Findings |");
+          console.log("| --- | --- |");
+          console.log(`| full history | ${count("gitleaks-history.json")} |`);
+          console.log(`| working tree | ${count("gitleaks-tree.json")} |`);
+          NODE
