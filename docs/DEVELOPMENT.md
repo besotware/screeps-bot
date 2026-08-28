@@ -181,6 +181,41 @@ status check exists. Ignore the badge; trust the check.
 Report the issuer you used, so it can be pinned in the workflow before the gate
 goes enforcing.
 
+## Watching the bot run
+
+There is no automated upload yet — the deployer arrives in Phase 4, and a
+Screeps API token is deliberately not created until then.
+
+```bash
+npm run build      # produces dist/main.js
+```
+
+Paste the contents of `dist/main.js` into the Screeps client's script editor
+(`main` module) and commit it to a branch. Works on the official server or a
+private one.
+
+**What you should see.** Console prints one line per room, on a 25-tick
+interval or immediately whenever the colony is short of a creep:
+
+```
+[W1N1 t3421] RCL2 [=====     ] E 300/550  har 0/0  min 2/2  hau 2/2  bld 1/1  upg 2/2  sites 3  cpu 4.2/20
+```
+
+A `!` after a count means that role is short — the fastest way to spot a
+spawn-planning problem. The same numbers are drawn in the room itself as an
+overlay, red for a shortfall.
+
+**Roughly what happens, in order.** Two harvesters bootstrap the room and feed
+the spawn. At tick 0 and every 50th tick the planner queues construction —
+source containers first, then extensions. Once a container finishes, a miner
+spawns and is bound to that source for life; a hauler follows. Harvesters stop
+being replaced once every source has a miner. Builders appear whenever there is
+something to build or repair and fall back to upgrading when idle. Towers, once
+you reach RCL 3, shoot healers first and repair only above a 300-energy reserve.
+
+Useful console filters while watching: `[spawn]`, `[build]`, `[tower]`,
+`[memory]`, and `threw` for the guard messages.
+
 ## Repository layout
 
 ```

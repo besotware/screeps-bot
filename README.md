@@ -10,18 +10,21 @@ something rather than merely configured.
 
 ## Status
 
-Phase 0 — skeleton and visibility. CI runs six scanners in reporting mode.
-See [`docs/PROGRESS.md`](docs/PROGRESS.md).
+Phase 1 — merge gates. Six CI jobs plus a coverage ratchet all block merges.
+The colony runs five roles with automatic base building, tower defence and
+per-tick telemetry. See [`docs/PROGRESS.md`](docs/PROGRESS.md).
 
 ## Layout
 
 ```
 src/domain/     Pure decision logic. No Game, no Memory, no globals.
+                body, roles, assignment, targets, construction, defense, stats
 src/runtime/    Projects live Screeps objects, issues intents.
+                creeps, spawning, building, towers, telemetry, projection
 src/main.ts     The tick loop.
 test/           Unit tests; test/helpers/mockGame.ts stands in for the runtime.
-scripts/        Build.
-docs/           PROGRESS.md, DECISIONS.md.
+scripts/        Build and the coverage ratchet.
+docs/           PROGRESS, DECISIONS, DEVELOPMENT, RULESET, GATE-PROOF.
 ```
 
 The domain/runtime split is deliberate: it lets the decisions be tested with

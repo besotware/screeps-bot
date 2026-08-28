@@ -1,5 +1,43 @@
 # Progress
 
+## Colony feature work — 2026-08-28
+
+Feature code added between phases, at your request, so there is something to
+watch run. Pipeline maturity deliberately unchanged.
+
+**Five roles, with an economic transition.** Generalist harvesters bootstrap a
+room; once a container exists beside a source, a static miner parks on it and
+haulers move the energy. A miner never walks and its WORK parts are never idle,
+which is what makes the handover worth the extra roles. Harvesters drop to zero
+at full miner coverage, but stay at one during a partial handover so a
+container-less source is never stranded.
+
+| Role | Body | Job |
+| --- | --- | --- |
+| harvester | `[WORK,CARRY,MOVE]` ×n | Bootstrap: mine and carry |
+| miner | `MOVE` + `WORK`×5 | Static, one per source container |
+| hauler | `[CARRY,CARRY,MOVE]` ×n | Container → spawn/extensions |
+| builder | `[WORK,CARRY,MOVE]` ×n | Build, then repair, then upgrade |
+| upgrader | `[WORK,WORK,CARRY,MOVE]` ×n | Controller |
+
+**Also added:** automatic base planning (source containers first, then
+extensions to the RCL allowance, on a checkerboard so creeps are not boxed in),
+tower operation (healers first, attack over heal over repair, energy reserved
+for firing), and per-tick telemetry with an in-client overlay.
+
+**Coverage rose to 99.56% / 94.08% / 100% / 99.54%** across 359 tests, up from
+124. The baseline was raised to match.
+
+The ratchet did its job here: the first pass at this feature work sat at 74.88%
+and would have been blocked. Every module landed with tests because the gate
+left no other option.
+
+Coverage also found dead code — `runTower`'s `heal` branch was unreachable
+because `decideTowerAction` never returned it. Implemented healing properly
+rather than deleting the branch, since towers really can heal.
+
+---
+
 ## Current state — Phase 1
 
 **Phase 1 — Merge gates. Substantially complete; blocked on you for the
