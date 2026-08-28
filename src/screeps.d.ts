@@ -14,6 +14,8 @@ declare global {
     /** Room name this creep is assigned to. */
     home: string;
     mode: WorkMode;
+    /** Miners only: the source this creep owns for its whole life. */
+    sourceId?: string;
   }
 
   interface Memory {
