@@ -82,6 +82,63 @@ manual pair to bump together; Phase 2 should teach Renovate to do it.
 
 ---
 
+## ADR-0007 — gitleaks scans every ref, not just the current branch
+
+**Date:** 2026-08-28 · **Phase:** 1 · **Status:** Accepted
+
+`actions/checkout` with `fetch-depth: 0` fetches all remote branches, and
+`gitleaks git` walks the full object graph. A secret on any branch therefore
+fails the gate on *every* branch, including `main`. This was found the hard way:
+the Phase 1 gate-proof PR turned `main` red.
+
+The obvious fix is `--log-opts=HEAD`, scoping the scan to the current branch's
+ancestry. Rejected. It weakens a security control to make CI green, and the
+scanner's verdict was correct — a secret pushed to any branch has already
+reached GitHub's servers and needs rotating regardless of whether that branch
+ever merges. Narrowing the scan would make the tool agree with us instead of
+making the repository clean.
+
+We accept the coupling: `main` stays red until the offending ref is deleted.
+
+**Gave up:** independence between branches. A stale branch holding a secret
+blocks all work until someone deals with it. That is the intended pressure, but
+it has a failure mode — if it ever becomes routine, people learn to ignore a red
+`main`, which is worse than the original problem. Revisit if it fires on
+anything other than a deliberate test.
+
+---
+
+## ADR-0006 — Coverage ratchet against a committed baseline
+
+**Date:** 2026-08-28 · **Phase:** 1 · **Status:** Accepted
+
+Phase 1 called for a ratchet rather than a fixed threshold. Three ways to hold
+the baseline were available: a committed file, a value derived from `main` at
+runtime, or a third-party coverage service.
+
+Chose a committed `coverage-baseline.json`. Deriving it from `main` at runtime
+means the number lives nowhere a reviewer can see, and needs an API call plus a
+token to read. A coverage service is neither free-forever nor self-hosted. A
+committed file makes lowering the bar a diff that appears in review — which is
+the entire point, since the realistic failure mode is not someone disabling the
+gate but someone quietly nudging the number down.
+
+Ratchets all four metrics (statements, branches, functions, lines) with a 0.01
+epsilon for Istanbul's rounding. Fails closed on a missing coverage summary: a
+broken test run must not pass the gate that exists to catch it.
+
+Verified before being made blocking: passes on unchanged coverage, fails on a
+drop, fails on a missing summary — and then blocked a real 6.69-point regression
+on PR #1.
+
+**Gave up:** automatic baseline updates. Coverage improvements need a manual
+`npm run coverage:baseline` commit, so the baseline can lag behind reality.
+Auto-updating would need `contents: write` on the workflow, which is a
+materially larger permission than every job currently holds, to save one
+command.
+
+---
+
 ## ADR-0005 — OSV-Scanner as a checksum-verified binary, not its action
 
 **Date:** 2026-08-28 · **Phase:** 0 · **Status:** Accepted

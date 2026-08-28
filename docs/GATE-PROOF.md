@@ -76,6 +76,27 @@ history, Semgrep scans the working tree with different rules. Either alone
 would have blocked this. Worth knowing which gate is load-bearing for which
 threat before Phase 5 starts removing them to see what still holds.
 
+**A secret on an unmerged branch turned `main` red.** After PR #1 was pushed,
+the next run on `main` failed gitleaks. Cause: `actions/checkout` with
+`fetch-depth: 0` fetches *all* remote branches, and `gitleaks git` walks the
+whole object graph — so it found the synthetic key on `demo/phase1-gate-proof`
+while scanning `main`.
+
+The tempting fix is `--log-opts=HEAD` to scope the scan to the current branch.
+**Rejected.** That weakens a security control to make CI green, and the scanner
+was right: a secret pushed to any branch is on GitHub's servers and is leaked.
+Narrowing the scan would have made the tool agree with us rather than making the
+repository clean.
+
+Fixed by deleting the branch. `main` went green on run
+[33146399208](https://github.com/besotware/screeps-bot/actions/runs/33146399208),
+which also confirms the diagnosis rather than leaving it a theory.
+
+The operational property to know: **a secret pushed to any branch reddens `main`
+until that ref is deleted.** That is loud, and it should be — in a real incident
+the branch deletion is the least of the work, and the key still needs rotating.
+Kept deliberately; see ADR-0007.
+
 **The ESLint gate failed silently.** It blocked correctly, but its findings went
 only to `eslint-report.json`; the job log showed nothing about *what* was wrong.
 The violation had to be reproduced locally to read the message. Fixed on `main`

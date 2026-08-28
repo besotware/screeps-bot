@@ -1,6 +1,34 @@
 # Progress
 
-## Current state
+## Current state — Phase 1
+
+**Phase 1 — Merge gates. Substantially complete; blocked on you for the
+ruleset and the signing decision.**
+
+Done:
+
+- All six Phase 0 jobs converted from reporting to enforcing (seven
+  `continue-on-error` markers removed).
+- Coverage ratchet added — introduced in reporting mode, watched reporting
+  correctly in CI, then made blocking. See ADR-0006.
+- Acceptance test passed: PR #1 carried three deliberate violations and all
+  three were blocked. Evidence in `docs/GATE-PROOF.md`.
+- `docs/DEVELOPMENT.md` documents both commit-signing options.
+- `docs/RULESET.md` has the exact `main` ruleset for you to apply.
+
+Outstanding, both needing you:
+
+1. **Apply the ruleset** (`docs/RULESET.md`). Until then the six checks are
+   advisory — they go red and nothing stops a merge. The gates are proved; the
+   enforcement is not.
+2. **Decide the signing method.** *Require signed commits* and gitsign are
+   mutually exclusive on GitHub today; enabling both gives a repo you cannot
+   commit to. Options, trade-offs and a recommendation are in
+   `docs/RULESET.md`.
+
+---
+
+## Phase 0 state
 
 **Phase 0 — Skeleton and visibility. Complete.** Acceptance test passed:
 `npm run build` produces a working bundle, and CI run
