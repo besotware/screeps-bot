@@ -2,9 +2,10 @@ import {
   rankEnergySinks,
   selectEnergySink,
   selectEnergySource,
+  selectPickup,
   sinkTier,
 } from "../../src/domain/targets";
-import type { EnergySink, EnergySource } from "../../src/domain/targets";
+import type { EnergyPickup, EnergySink, EnergySource } from "../../src/domain/targets";
 
 const sink = (over: Partial<EnergySink> & { id: string }): EnergySink => ({
   structureType: "extension",
@@ -82,6 +83,72 @@ describe("selectEnergySink", () => {
         sink({ id: "spawn", structureType: "spawn", range: 9 }),
       ])?.id,
     ).toBe("ext"); // same tier, same range -- id breaks the tie
+  });
+});
+
+describe("selectPickup", () => {
+  const pickup = (over: Partial<EnergyPickup> & { id: string }): EnergyPickup => ({
+    kind: "container",
+    amount: 500,
+    range: 5,
+    ...over,
+  });
+
+  it("returns undefined when there is nothing to collect", () => {
+    expect(selectPickup([])).toBeUndefined();
+  });
+
+  it("ignores empty piles", () => {
+    expect(selectPickup([pickup({ id: "empty", amount: 0 })])).toBeUndefined();
+  });
+
+  it("respects a minimum amount, so haulers do not cross the room for scraps", () => {
+    expect(selectPickup([pickup({ id: "small", amount: 20 })], 100)).toBeUndefined();
+    expect(selectPickup([pickup({ id: "big", amount: 200 })], 100)?.id).toBe("big");
+  });
+
+  it("clears decaying energy before stored energy", () => {
+    // Dropped energy is being lost every tick; a container is not.
+    expect(
+      selectPickup([
+        pickup({ id: "container", amount: 2000, range: 1 }),
+        pickup({ id: "dropped", kind: "dropped", amount: 50, range: 20 }),
+      ])?.id,
+    ).toBe("dropped");
+  });
+
+  it("treats tombstones as perishable too", () => {
+    expect(
+      selectPickup([
+        pickup({ id: "container", amount: 2000 }),
+        pickup({ id: "tomb", kind: "tombstone", amount: 100 }),
+      ])?.id,
+    ).toBe("tomb");
+  });
+
+  it("prefers the biggest pile within a tier", () => {
+    expect(
+      selectPickup([pickup({ id: "small", amount: 100 }), pickup({ id: "big", amount: 900 })])?.id,
+    ).toBe("big");
+  });
+
+  it("prefers the nearer pile when amounts tie", () => {
+    expect(
+      selectPickup([
+        pickup({ id: "far", amount: 500, range: 20 }),
+        pickup({ id: "near", amount: 500, range: 2 }),
+      ])?.id,
+    ).toBe("near");
+  });
+
+  it("breaks full ties deterministically on id", () => {
+    const input = [pickup({ id: "b" }), pickup({ id: "a" })];
+    expect(selectPickup(input)?.id).toBe("a");
+    expect(selectPickup([...input].reverse())?.id).toBe("a");
+  });
+
+  it("falls back to stored energy when nothing is perishable", () => {
+    expect(selectPickup([pickup({ id: "storage", kind: "storage" })])?.id).toBe("storage");
   });
 });
 
