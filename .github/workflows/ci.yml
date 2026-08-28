@@ -124,6 +124,16 @@ jobs:
           }
           NODE
 
+      # NEW GATE -- introduced in reporting mode, per report -> warn -> block.
+      # It has been shown to pass on unchanged coverage, fail on a drop, and
+      # fail on a missing summary. It becomes blocking in a follow-up commit,
+      # once it has been watched reporting correctly against a real PR.
+      - name: Coverage ratchet
+        if: always()
+        # PHASE-1-GATE: delete this line to make a coverage drop block the merge.
+        continue-on-error: true
+        run: npm run coverage:check
+
       - name: Upload coverage
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

@@ -13,7 +13,9 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "jest",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "coverage:check": "node scripts/coverage-ratchet.mjs",
+    "coverage:baseline": "jest --coverage --silent && node scripts/coverage-ratchet.mjs --update"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

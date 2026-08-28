@@ -64,5 +64,14 @@ export default tseslint.config(
       parserOptions: { projectService: false, project: false, program: null },
       globals: { console: "readonly", process: "readonly" },
     },
+    rules: {
+      // Must spread disableTypeChecked's rules, not replace them: a bare
+      // `rules` key here shadows the ones the spread above turned off, and the
+      // type-aware rules come back on for files with no type information.
+      ...tseslint.configs.disableTypeChecked.rules,
+      // A TypeScript rule applied to plain JavaScript, where there is no
+      // annotation syntax to satisfy it.
+      "@typescript-eslint/explicit-function-return-type": "off",
+    },
   },
 );
