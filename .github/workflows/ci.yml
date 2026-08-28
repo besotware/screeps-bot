@@ -251,7 +251,7 @@ jobs:
           osv-scanner scan source \
             --lockfile=package-lock.json \
             --format=json \
-            --output=osv.json
+            --output-file=osv.json
 
       - name: Report OSV findings
         if: always()

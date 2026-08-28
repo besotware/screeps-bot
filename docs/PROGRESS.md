@@ -2,8 +2,12 @@
 
 ## Current state
 
-**Phase 0 — Skeleton and visibility.** Local acceptance met; CI acceptance
-pending first push to a remote (see *Blocked / needs you*).
+**Phase 0 — Skeleton and visibility. Complete.** Acceptance test passed:
+`npm run build` produces a working bundle, and CI run
+[33140975975](https://github.com/besotware/screeps-bot/actions/runs/33140975975)
+is green with all six scanners reporting. Baselines below.
+
+Repo: <https://github.com/besotware/screeps-bot> (public).
 
 ---
 
@@ -34,17 +38,20 @@ scanner gates measure against.
 
 ### Scanners
 
-| Scanner | Local baseline | Notes |
-| --- | --- | --- |
-| ESLint | 0 errors, 0 warnings | Clean at introduction, so any finding is a regression |
-| `tsc --noEmit` | 0 errors | strict, plus `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes` |
-| Semgrep OSS | pending first CI run | `p/typescript`, `p/javascript`, `p/security-audit`, `p/secrets` |
-| OSV-Scanner | pending first CI run | `npm audit` reported 0 vulnerabilities locally |
-| gitleaks | pending first CI run | full history + working tree |
+From CI run [33140975975](https://github.com/besotware/screeps-bot/actions/runs/33140975975),
+the first fully green run.
 
-Three scanners only run in CI and have no local number yet. **Fill these in from
-the first green run before starting Phase 1** — the ratchet is meaningless
-without them.
+| Scanner | Baseline | Scope |
+| --- | --- | --- |
+| ESLint | **0** errors, 0 warnings | whole repo |
+| `tsc --noEmit` | **0** errors | strict, plus `noUncheckedIndexedAccess` and `exactOptionalPropertyTypes` |
+| Semgrep OSS | **0** findings (0 blocking) | 128 rules over 25 files; `p/typescript`, `p/javascript`, `p/security-audit`, `p/secrets` |
+| OSV-Scanner | **0** vulnerabilities | 414 packages from `package-lock.json` |
+| gitleaks (history) | **0** leaks | 11 commits, ~324 KB |
+| gitleaks (working tree) | **0** leaks | ~102 KB |
+
+Every scanner is clean at introduction, which is the useful property: from here
+any non-zero count is a regression rather than a number to argue about.
 
 ---
 
@@ -87,6 +94,16 @@ Worth noting because it is exactly the failure mode CLAUDE.md warns about: a
 gate that reports a number nobody has verified means anything. Had Phase 1
 ratcheted against 99.44%, the baseline would have been fiction.
 
+**A SHA-pinned action was pinning nothing.** `google/osv-scanner-action` failed
+the first CI run on a malformed root `action.yml`. Fixing the path would have
+worked, but reading the action revealed it resolves
+`docker://ghcr.io/google/osv-scanner-action:v2.2.4` — a mutable tag. The commit
+SHA pinned the wrapper while the image that actually runs stayed free to change.
+Replaced with a checksum-verified binary; see ADR-0005.
+
+This is worth remembering when Phase 2 audits action pinning: `uses:` at a SHA
+is necessary, not sufficient. What the action *does* has to be pinned too.
+
 **esbuild's blocked `postinstall` costs nothing.** It declares
 `postinstall: node install.js`; `ignore-scripts` skips it and esbuild works,
 because it resolves its platform binary through `optionalDependencies`. Verified
@@ -101,7 +118,8 @@ by auditing every `package.json` in the tree for lifecycle scripts.
 | Pin runner to a digest, not `ubuntu-24.04` | 2 | Needs the containerized build |
 | Pin Semgrep via the build image rather than `pip install` | 2 | Same |
 | Teach Renovate to bump the gitleaks version and checksum together | 2 | Renovate not configured yet |
-| A workflow self-audit asserting SHA pinning and `permissions` | 2 | Verified by hand this phase; should be mechanical |
+| A workflow self-audit asserting SHA pinning and `permissions` | 2 | Verified by hand this phase; should be mechanical. Must also check what pinned actions *resolve to* — see ADR-0005 |
+| Verify osv-scanner's SLSA provenance (`multiple.intoto.jsonl`) with slsa-verifier instead of a hand-copied checksum | 3 | Checksums are still trust-on-first-use |
 | SARIF upload to GitHub code scanning | 1 | Needs `security-events: write`; wanted the least-privilege baseline first |
 | Builder / hauler roles, container logic | 6 | Not needed until integration tests want them |
 
@@ -109,21 +127,17 @@ by auditing every `package.json` in the tree for lifecycle scripts.
 
 ## Blocked / needs you
 
-**The repo has no remote.** Everything above is committed locally on `main`.
-CI has never run, so the Phase 0 acceptance test is only partly proved: the
-build, tests, typecheck and lint pass locally, but "CI runs green with all
-scanners reporting" is unverified.
+Nothing. Phase 0 is closed.
 
-Decided this session: **public** repo under `besotware`. Private on a free
-personal account cannot use rulesets or branch protection, which would make
-Phase 1's merge gates unenforceable.
-
-Exact steps are in the session summary. Nothing touches the account until you
-run them.
+Note for Phase 1: git identity for this repo is set **repo-local** to
+`besotware <besotware@gmail.com>` (verified primary on the account). The global
+identity is different, so a fresh clone must set this again or commits will be
+authored by the wrong person.
 
 ---
 
 ## Next
 
-**Phase 1 — Merge gates.** Not started. Do not begin until the Phase 0 CI run is
-green and the three pending scanner baselines above are filled in.
+**Phase 1 — Merge gates.** Not started. Converting the six reporting jobs to
+enforcing is a matter of deleting the seven `PHASE-1-GATE` marked lines; the
+work is the coverage ratchet, the `main` ruleset, and gitsign.
