@@ -29,7 +29,7 @@ repository settings is on the stop-and-ask list.
 | ↳ Require conversation resolution | ✅ on |
 | **Require status checks to pass** | ✅ on |
 | ↳ Require branches to be up to date | ✅ on |
-| **Require signed commits** | ⚠️ *see the signing decision below — do not enable yet* |
+| **Require signed commits** | ❌ **off — deliberately.** See the signing decision below. |
 
 ### Required status checks
 
@@ -45,6 +45,10 @@ Semgrep (SAST)
 OSV-Scanner (SCA)
 gitleaks (secrets)
 ```
+
+**Do not add `Commit signing` yet.** That job exists but is still in reporting
+mode — no commit is signed, so it currently reports failure on everything by
+design. Add it as a required check only after it has been flipped to enforcing.
 
 Source: `.github/workflows/ci.yml`. Renaming a job silently detaches its gate —
 rename in both places or neither.
@@ -109,20 +113,34 @@ two unrelated signing systems.
 rejection — an unsigned commit is caught at the merge gate rather than refused
 at push. It also means writing and maintaining the verification job.
 
-### Recommendation
+### Decision: Option B — chosen 2026-08-28
 
-**Option B.** The whole premise of this project is that a control you have
-watched block something beats a setting you have ticked, and Option A's gate
-checks validity where Option B's checks identity.
+gitsign for signing; *Require signed commits* stays **off**; a `Commit signing`
+status check asserts identity instead.
 
-But it is a real trade: Option A is enforced by GitHub at push time and costs
-nothing to maintain, while Option B is enforced by a job we have to write
-correctly. If you would rather have the simpler thing working now and revisit
-signing in Phase 3 alongside cosign, Option A is a defensible call.
+gitsign's own documentation makes the case better than the argument above did:
 
-**Either way: leave *Require signed commits* off when you first apply this
-ruleset.** Enable it only under Option A, and only after your first signed
-commit shows as Verified.
+> `gitsign verify` is preferred over `git verify-commit` […] The git commands do
+> not pass through any expected identity information to the signing tools, so
+> they only verify cryptographic integrity and that the data exists on Rekor,
+> but not **who** put the data there.
+
+That is the same distinction as CLAUDE.md line 24, from the tool's authors.
+GitHub's *Verified* badge is the weaker assertion — "a key linked to an account
+signed this" — and it cannot read Sigstore certificates anyway.
+
+**Consequence to accept:** enforcement moves from push time to merge time. An
+unsigned commit can land on a branch; it cannot pass the PR gate. And the
+`Commit signing` job is ours to keep correct, where GitHub's checkbox would have
+been someone else's problem.
+
+**Status:** the job is in **reporting mode** and will report failure on every
+commit until signing is set up — that is expected, not a bug. Two things get
+resolved by watching it run: whether the identity assertion works at all, and
+which OIDC issuer your certificate actually carries (it depends on the provider
+you pick at the browser prompt, so it cannot be predicted). It is pinned to
+`https://github.com/login/oauth` as the likely value; the report prints what it
+actually finds, and that observed value is what gets pinned before enforcing.
 
 ---
 

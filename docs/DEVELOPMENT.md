@@ -67,12 +67,16 @@ than being computed from `main` at runtime.
 
 ## Commit signing
 
-> **Not yet active.** The choice between SSH signing and gitsign is open — see
-> the signing decision in `docs/RULESET.md`. Both procedures are below so
-> whichever gets picked is a copy-paste. Do not enable *Require signed commits*
-> on the ruleset until a signed commit has been observed as Verified.
+> **Decided: gitsign (Option B).** Follow the gitsign section below; the SSH
+> section is kept only as the rejected alternative. *Require signed commits*
+> stays **off** on the ruleset — GitHub cannot read Sigstore signatures. A
+> `Commit signing` status check asserts the certificate identity instead, which
+> is a stronger claim than GitHub's badge. See `docs/RULESET.md`.
+>
+> The CI check is in **reporting mode** until signing works end to end, so
+> nothing is blocked while you set this up.
 
-### Option A — SSH signing
+### Option A — SSH signing *(not chosen — kept for reference)*
 
 GitHub verifies these natively.
 
@@ -98,27 +102,41 @@ git log --show-signature -1
 Then confirm GitHub shows **Verified** on the pushed commit before enabling the
 ruleset rule.
 
-### Option B — gitsign (keyless, Sigstore)
+### Option B — gitsign (keyless, Sigstore) — **this is the one to set up**
 
 No private key on disk. Each commit gets a short-lived certificate from Fulcio
-bound to an OIDC identity, and the signature is logged to Rekor.
+bound to an OIDC identity, and the signature goes to the Rekor transparency log.
 
-Install (verify the checksum against the release's `checksums.txt` — do not
-skip this, the whole point is that we can name what we execute):
+**1. Install.** Version and checksum below are the ones CI verifies against, so
+you and CI run the same binary. Do not skip the checksum — being able to name
+what we execute is the whole point.
+
+Windows (PowerShell), from the repo root:
+
+```powershell
+$ver = "0.17.1"
+$url = "https://github.com/sigstore/gitsign/releases/download/v$ver/gitsign_${ver}_windows_amd64.exe"
+Invoke-WebRequest -Uri $url -OutFile gitsign.exe
+# Compare against the windows_amd64.exe line in the release's checksums.txt
+(Get-FileHash gitsign.exe -Algorithm SHA256).Hash.ToLower()
+curl.exe -sL "https://github.com/sigstore/gitsign/releases/download/v$ver/checksums.txt" | Select-String "windows_amd64.exe"
+```
+
+Move `gitsign.exe` somewhere on `PATH` once the two hashes match.
+
+Linux:
 
 ```bash
-GITSIGN_VERSION=0.13.0   # check github.com/sigstore/gitsign/releases for current
+GITSIGN_VERSION=0.17.1
+GITSIGN_SHA256=69213a8a0813a151e5a47d0060862952ff833a845d57309dff76f7ba6600abae
 curl -sSfL -o gitsign \
   "https://github.com/sigstore/gitsign/releases/download/v${GITSIGN_VERSION}/gitsign_${GITSIGN_VERSION}_linux_amd64"
-curl -sSfL -o gitsign-checksums.txt \
-  "https://github.com/sigstore/gitsign/releases/download/v${GITSIGN_VERSION}/gitsign_${GITSIGN_VERSION}_checksums.txt"
-grep "linux_amd64$" gitsign-checksums.txt | sha256sum -c -
+echo "${GITSIGN_SHA256}  gitsign" | sha256sum -c -
 chmod +x gitsign && sudo mv gitsign /usr/local/bin/
 ```
 
-On Windows use the `windows_amd64.exe` asset and put it on `PATH`.
-
-Configure this repo only:
+**2. Configure this repo only** (not global — the rest of your work should not
+suddenly require a browser round-trip per commit):
 
 ```bash
 git config gpg.x509.program gitsign
@@ -126,19 +144,42 @@ git config gpg.format x509
 git config commit.gpgsign true
 ```
 
-First commit opens a browser for the OIDC flow; the certificate lasts ten
-minutes and is discarded.
+**3. Sign one commit.** A browser opens for the OIDC flow. **Note which provider
+you pick** — GitHub, Google or Microsoft — because that choice determines the
+issuer recorded in the certificate, and the CI check has to assert the one you
+actually used.
 
 ```bash
 git commit --allow-empty -m "chore: verify gitsign signing"
+```
+
+**4. Verify locally**, substituting the issuer matching your provider:
+
+| Provider chosen | `--certificate-oidc-issuer` |
+| --- | --- |
+| GitHub | `https://github.com/login/oauth` |
+| Google | `https://accounts.google.com` |
+| Microsoft | `https://login.microsoftonline.com` |
+
+```bash
 gitsign verify --certificate-identity="besotware@gmail.com" \
   --certificate-oidc-issuer="https://github.com/login/oauth" HEAD
 ```
 
-**Expect GitHub to show this commit as Unverified.** That is not a
-misconfiguration — GitHub does not trust Fulcio's root, which is exactly why
-Option B pairs with a CI identity check instead of the ruleset rule. Verify the
-identity assertion above succeeds; ignore the badge.
+Expect `Validated Git signature: true`, `Validated Rekor entry: true`,
+`Validated Certificate claims: true`.
+
+Use `gitsign verify`, not `git verify-commit`. Per gitsign's own docs the git
+commands pass through no expected identity, so they confirm the signature is
+cryptographically sound and present in Rekor but not *who* made it — which is
+the only part we actually care about.
+
+**5. Expect GitHub to show the commit as Unverified.** Not a misconfiguration:
+GitHub does not trust Fulcio's root. That is exactly why the `Commit signing`
+status check exists. Ignore the badge; trust the check.
+
+Report the issuer you used, so it can be pinned in the workflow before the gate
+goes enforcing.
 
 ## Repository layout
 

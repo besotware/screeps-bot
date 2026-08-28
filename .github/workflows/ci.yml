@@ -295,6 +295,91 @@ jobs:
           console.log(`| advisories | ${vulns} |`);
           NODE
 
+  commit-signing:
+    name: Commit signing
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    # PR events only. A squash or merge commit created by GitHub's UI is signed
+    # by GitHub's own key, not by gitsign, so verifying on push to main would
+    # fail on every merge. base..head is exactly the human-authored commits.
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Install gitsign
+        env:
+          GITSIGN_VERSION: "0.17.1"
+          GITSIGN_SHA256: "69213a8a0813a151e5a47d0060862952ff833a845d57309dff76f7ba6600abae"
+        run: |
+          set -euo pipefail
+          url="https://github.com/sigstore/gitsign/releases/download/v${GITSIGN_VERSION}/gitsign_${GITSIGN_VERSION}_linux_amd64"
+          curl -sSfL "$url" -o gitsign
+          echo "${GITSIGN_SHA256}  gitsign" | sha256sum -c -
+          sudo install -m 0755 gitsign /usr/local/bin/gitsign
+          gitsign --version || true
+
+      # REPORTING MODE -- this gate is new and no commit is signed yet, so it
+      # would fail everything. Two unknowns get resolved by watching it run:
+      # whether the identity assertion works at all, and which OIDC issuer the
+      # certificate actually carries (it depends on the provider chosen at the
+      # browser prompt, so it cannot be predicted from here).
+      #
+      # `gitsign verify` is used rather than `git verify-commit` deliberately.
+      # Per gitsign's own docs, the git commands verify cryptographic integrity
+      # and Rekor presence but pass through no expected identity -- they cannot
+      # tell you *who* signed. Asserting identity is the entire point.
+      - name: Verify commit signatures
+        # PHASE-1-SIGNING-GATE: delete this line to make unsigned commits block.
+        continue-on-error: true
+        env:
+          EXPECT_IDENTITY: "besotware@gmail.com"
+          # Pinned once observed. Until then the report prints what it finds.
+          EXPECT_ISSUER: "https://github.com/login/oauth"
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -uo pipefail
+          commits="$(git rev-list "${BASE_SHA}..${HEAD_SHA}")"
+
+          if [ -z "$commits" ]; then
+            echo "No commits in range; nothing to verify."
+            exit 0
+          fi
+
+          echo "### Commit signing" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Expecting identity \`${EXPECT_IDENTITY}\` from issuer \`${EXPECT_ISSUER}\`." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Commit | Subject | Result |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| --- | --- | --- |" >> "$GITHUB_STEP_SUMMARY"
+
+          failed=0
+          for sha in $commits; do
+            subject="$(git log -1 --format=%s "$sha" | cut -c1-60)"
+            echo "::group::verify ${sha}"
+            if out="$(gitsign verify \
+                  --certificate-identity="${EXPECT_IDENTITY}" \
+                  --certificate-oidc-issuer="${EXPECT_ISSUER}" \
+                  "$sha" 2>&1)"; then
+              echo "$out"
+              result="verified"
+            else
+              echo "$out"
+              # Surface whatever identity the certificate does carry, so the
+              # issuer can be pinned from evidence rather than guessed.
+              result="FAILED: $(echo "$out" | tr '\n' ' ' | cut -c1-120)"
+              failed=1
+            fi
+            echo "::endgroup::"
+            echo "| \`${sha:0:8}\` | ${subject} | ${result} |" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+          exit "$failed"
+
   gitleaks:
     name: gitleaks (secrets)
     runs-on: ubuntu-24.04
