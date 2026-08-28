@@ -1,0 +1,8 @@
+# Normalise to LF in the repository. Development happens on Windows and CI runs
+# on Linux; without this the two disagree about file contents, which shows up
+# later as unstable hashes and noisy diffs.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary
