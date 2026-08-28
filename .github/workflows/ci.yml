@@ -158,8 +158,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Human-readable to the log, JSON to a file for the report step. Without
+      # the tee, a failing lint gate prints nothing at all and the developer
+      # has to reproduce it locally to find out what broke.
       - name: Run ESLint
-        run: npx eslint . --format json --output-file eslint-report.json
+        run: |
+          set -o pipefail
+          npx eslint . --format json --output-file eslint-report.json 2>&1 | tee eslint-stderr.log || {
+            echo "--- findings ---"
+            npx eslint . --format stylish || true
+            exit 1
+          }
 
       - name: Report lint findings
         if: always()
@@ -175,6 +184,16 @@ jobs:
           console.log("| --- | --- |");
           console.log(`| errors | ${errors} |`);
           console.log(`| warnings | ${warnings} |`);
+          if (errors + warnings > 0) {
+            console.log("\n| File | Line | Rule | Message |");
+            console.log("| --- | --- | --- | --- |");
+            for (const file of results) {
+              const rel = file.filePath.replace(process.cwd() + "/", "");
+              for (const m of file.messages) {
+                console.log(`| ${rel} | ${m.line} | \`${m.ruleId ?? "-"}\` | ${m.message} |`);
+              }
+            }
+          }
           NODE
 
   semgrep:
