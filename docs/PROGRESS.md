@@ -16,15 +16,26 @@ Done:
 - `docs/DEVELOPMENT.md` documents both commit-signing options.
 - `docs/RULESET.md` has the exact `main` ruleset for you to apply.
 
+- Signing decided: **gitsign + a CI identity check** (Option B in
+  `docs/RULESET.md`). *Require signed commits* stays off — GitHub cannot read
+  Sigstore signatures. A `Commit signing` job asserts certificate identity and
+  OIDC issuer instead, which is the stronger claim.
+- `Commit signing` job added in **reporting mode**. It reports failure on every
+  commit until signing is set up; that is expected.
+
 Outstanding, both needing you:
 
 1. **Apply the ruleset** (`docs/RULESET.md`). Until then the six checks are
    advisory — they go red and nothing stops a merge. The gates are proved; the
    enforcement is not.
-2. **Decide the signing method.** *Require signed commits* and gitsign are
-   mutually exclusive on GitHub today; enabling both gives a repo you cannot
-   commit to. Options, trade-offs and a recommendation are in
-   `docs/RULESET.md`.
+2. **Set up gitsign** (`docs/DEVELOPMENT.md`) and report which OIDC provider you
+   authenticate with. The issuer in the certificate depends on that choice and
+   cannot be predicted from here; it is currently pinned to
+   `https://github.com/login/oauth` as a guess, and the reporting-mode job
+   prints what it actually finds.
+
+Then: pin the observed issuer, flip `Commit signing` to enforcing, add it as a
+seventh required check, and prove it blocks an unsigned commit.
 
 ---
 
