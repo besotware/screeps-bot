@@ -1,13 +1,17 @@
 name: CI
 
-# PHASE 0 -- REPORTING MODE.
+# PHASE 1 -- ENFORCING.
 #
-# Every scanner below runs and reports, and nothing fails the build. The steps
-# that will become merge gates are marked with `continue-on-error: true` and a
-# PHASE-1-GATE comment. Converting this workflow to enforcing means deleting
-# those two lines per step and nothing else -- no re-plumbing, no new jobs.
+# Every job here blocks the merge. Each one ran in reporting mode first (Phase
+# 0 for the six scanners, an earlier commit on this branch for the coverage
+# ratchet) so its clean baseline was established before it could fail anything.
 #
-# The baseline numbers these jobs print are recorded in docs/PROGRESS.md.
+# These job names are referenced by the branch ruleset on main as required
+# status checks. Renaming a job silently detaches its gate: the ruleset then
+# waits for a check that no longer reports. Rename here and in the ruleset
+# together, or not at all.
+#
+# Baselines are recorded in docs/PROGRESS.md.
 
 on:
   push:
@@ -102,8 +106,6 @@ jobs:
         run: npm ci
 
       - name: Run tests with coverage
-        # PHASE-1-GATE: delete this line to make failing tests block the merge.
-        continue-on-error: true
         run: npm run test:coverage -- --ci
 
       - name: Report test and coverage baseline
@@ -124,14 +126,10 @@ jobs:
           }
           NODE
 
-      # NEW GATE -- introduced in reporting mode, per report -> warn -> block.
-      # It has been shown to pass on unchanged coverage, fail on a drop, and
-      # fail on a missing summary. It becomes blocking in a follow-up commit,
-      # once it has been watched reporting correctly against a real PR.
+      # Runs even when the tests failed: the ratchet's own failure mode on a
+      # missing coverage summary is a deliberate signal, not noise.
       - name: Coverage ratchet
         if: always()
-        # PHASE-1-GATE: delete this line to make a coverage drop block the merge.
-        continue-on-error: true
         run: npm run coverage:check
 
       - name: Upload coverage
@@ -161,8 +159,6 @@ jobs:
         run: npm ci
 
       - name: Run ESLint
-        # PHASE-1-GATE: delete this line to make lint errors block the merge.
-        continue-on-error: true
         run: npx eslint . --format json --output-file eslint-report.json
 
       - name: Report lint findings
@@ -195,8 +191,6 @@ jobs:
         run: pip install --disable-pip-version-check semgrep==1.175.0
 
       - name: Run Semgrep
-        # PHASE-1-GATE: delete this line to make findings block the merge.
-        continue-on-error: true
         run: |
           semgrep scan \
             --config p/typescript \
@@ -255,8 +249,6 @@ jobs:
           osv-scanner --version
 
       - name: Run OSV-Scanner
-        # PHASE-1-GATE: delete this line to make vulnerable deps block the merge.
-        continue-on-error: true
         run: |
           osv-scanner scan source \
             --lockfile=package-lock.json \
@@ -316,13 +308,9 @@ jobs:
       # commit that has ever existed; `dir` inspects the working tree as it
       # stands, catching a secret that is present but never committed.
       - name: Scan full history
-        # PHASE-1-GATE: delete this line to make leaked secrets block the merge.
-        continue-on-error: true
         run: gitleaks git --redact --report-format json --report-path gitleaks-history.json --exit-code 1 .
 
       - name: Scan working tree
-        # PHASE-1-GATE: delete this line to make leaked secrets block the merge.
-        continue-on-error: true
         run: gitleaks dir --redact --report-format json --report-path gitleaks-tree.json --exit-code 1 .
 
       - name: Report gitleaks findings
