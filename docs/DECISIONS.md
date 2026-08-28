@@ -82,6 +82,47 @@ manual pair to bump together; Phase 2 should teach Renovate to do it.
 
 ---
 
+## ADR-0005 — OSV-Scanner as a checksum-verified binary, not its action
+
+**Date:** 2026-08-28 · **Phase:** 0 · **Status:** Accepted
+
+The first CI run failed at job setup:
+
+```
+Top level 'runs:' section is required for
+google/osv-scanner-action/<sha>/action.yml
+```
+
+The repository root holds a marketplace metadata stub with no `runs:` block; the
+real action lives at `google/osv-scanner-action/osv-scanner-action`. Correcting
+the path would have fixed the error, but reading the action first turned up
+something worse:
+
+```yaml
+runs:
+  using: "docker"
+  image: "docker://ghcr.io/google/osv-scanner-action:v2.2.4"
+```
+
+It resolves a **mutable tag**. Pinning the action to a commit SHA would have
+pinned the wrapper while leaving the image that actually executes free to
+change under us — precisely the "it has a valid signature" class of failure the
+brief is built to avoid, and a direct breach of *digest-pinned base images, no
+tags, anywhere*. The action's own description also states it is not intended for
+direct use.
+
+We install the `osv-scanner` binary from a pinned release and verify it against a
+recorded SHA-256, matching the gitleaks approach in ADR-0003.
+
+**Gave up:** the action's SARIF output wiring and Renovate's action updates. The
+version and checksum are a manual pair to bump together.
+
+**Follow-up:** the release also publishes `multiple.intoto.jsonl` — SLSA
+provenance. Phase 3 should verify that with `slsa-verifier` instead of trusting a
+checksum we transcribed by hand, which is still trust-on-first-use.
+
+---
+
 ## ADR-0004 — Domain / runtime split in the bot source
 
 **Date:** 2026-08-27 · **Phase:** 0 · **Status:** Accepted

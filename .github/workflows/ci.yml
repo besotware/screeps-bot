@@ -226,14 +226,31 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # Installed from a pinned release and checksum-verified, not via
+      # google/osv-scanner-action. That action resolves to
+      # `docker://ghcr.io/google/osv-scanner-action:v2.2.4` -- a mutable tag --
+      # so SHA-pinning the action would pin the wrapper while leaving the thing
+      # that actually executes floating. Its own description also says it is
+      # not intended for direct use. See ADR-0005.
+      - name: Install OSV-Scanner
+        env:
+          OSV_VERSION: "2.5.1"
+          OSV_SHA256: "f9f25499a2c8cc367b3af45df2ea7eeca7fbccceab9c35079968f4b3652194be"
+        run: |
+          set -euo pipefail
+          url="https://github.com/google/osv-scanner/releases/download/v${OSV_VERSION}/osv-scanner_linux_amd64"
+          curl -sSfL "$url" -o osv-scanner
+          echo "${OSV_SHA256}  osv-scanner" | sha256sum -c -
+          sudo install -m 0755 osv-scanner /usr/local/bin/osv-scanner
+          osv-scanner --version
+
       - name: Run OSV-Scanner
         # PHASE-1-GATE: delete this line to make vulnerable deps block the merge.
         continue-on-error: true
-        uses: google/osv-scanner-action@9bb69575e74019c2ad085a1860787043adf47ccb # v2.2.4
-        with:
-          scan-args: |-
-            --lockfile=package-lock.json
-            --format=json
+        run: |
+          osv-scanner scan source \
+            --lockfile=package-lock.json \
+            --format=json \
             --output=osv.json
 
       - name: Report OSV findings
