@@ -31,7 +31,7 @@ describe("buildReport", () => {
   beforeEach(() => {
     restore = installGame({
       time: 4242,
-      cpu: { getUsed: () => 7.5, limit: 20 } as unknown as CPU,
+      cpu: { getUsed: () => 7.5, limit: 20, bucket: 10_000 } as unknown as CPU,
     });
   });
   afterEach(() => restore());

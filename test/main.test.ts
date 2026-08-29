@@ -45,7 +45,14 @@ function installMemory(creeps: Record<string, unknown>): () => void {
   };
 }
 
-const CPU = { getUsed: () => 3, limit: 20 } as unknown as CPU;
+/** A healthy CPU position: full bucket, barely any of the tick spent. */
+const CPU = { getUsed: () => 3, limit: 20, bucket: 10_000 } as unknown as CPU;
+
+/** Bucket exhausted: only defence, spawning and creep actions may run. */
+const CPU_CRITICAL = { getUsed: () => 3, limit: 20, bucket: 100 } as unknown as CPU;
+
+/** Bucket low but not empty: planning survives, telemetry does not. */
+const CPU_STRAINED = { getUsed: () => 3, limit: 20, bucket: 2000 } as unknown as CPU;
 
 describe("loop", () => {
   let logSpy: jest.SpyInstance;
@@ -314,5 +321,102 @@ describe("loop under attack", () => {
     restoreGame();
     restoreMemory();
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("SAFE MODE"));
+  });
+});
+
+describe("loop under CPU pressure", () => {
+  let logSpy: jest.SpyInstance;
+  beforeEach(() => {
+    logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+  });
+  afterEach(() => logSpy.mockRestore());
+
+  it("plans and reports when CPU is healthy", () => {
+    const room = fakeRoom({ sourceCount: 1 });
+    const restoreMemory = installMemory({});
+    const restoreGame = installGame({
+      time: 0,
+      creeps: {},
+      spawns: { a: fakeSpawnIn(room) },
+      cpu: CPU,
+    });
+
+    loop();
+
+    restoreGame();
+    restoreMemory();
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("[build]"));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("RCL"));
+  });
+
+  it("drops telemetry first when the bucket is draining", () => {
+    // Nothing depends on telemetry, so it is the cheapest thing to lose.
+    const room = fakeRoom({ sourceCount: 1 });
+    const restoreMemory = installMemory({});
+    const restoreGame = installGame({
+      time: 0,
+      creeps: {},
+      spawns: { a: fakeSpawnIn(room) },
+      cpu: CPU_STRAINED,
+    });
+
+    loop();
+
+    restoreGame();
+    restoreMemory();
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("[build]"));
+    expect(logSpy).not.toHaveBeenCalledWith(expect.stringContaining("RCL"));
+  });
+
+  it("drops planning too when the bucket is critical", () => {
+    const room = fakeRoom({ sourceCount: 1 });
+    const restoreMemory = installMemory({});
+    const restoreGame = installGame({
+      time: 0,
+      creeps: {},
+      spawns: { a: fakeSpawnIn(room) },
+      cpu: CPU_CRITICAL,
+    });
+
+    loop();
+
+    restoreGame();
+    restoreMemory();
+    expect(logSpy).not.toHaveBeenCalledWith(expect.stringContaining("[build]"));
+  });
+
+  it("reports the CPU position when pressure is not healthy", () => {
+    const room = fakeRoom({ sourceCount: 1 });
+    const restoreMemory = installMemory({});
+    const restoreGame = installGame({
+      time: 7,
+      creeps: {},
+      spawns: { a: fakeSpawnIn(room) },
+      cpu: CPU_CRITICAL,
+    });
+
+    loop();
+
+    restoreGame();
+    restoreMemory();
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("[cpu]"));
+  });
+
+  it("still runs creeps when the bucket is critical", () => {
+    // Skipping creep actions costs bodies; skipping a plan costs nothing.
+    const room = fakeRoom({ sourceCount: 1 });
+    const restoreMemory = installMemory({ bad: {} });
+    const restoreGame = installGame({
+      time: 7,
+      creeps: { bad: trackedCreep("bad", { throws: true }) },
+      spawns: { a: fakeSpawnIn(room) },
+      cpu: CPU_CRITICAL,
+    });
+
+    loop();
+
+    restoreGame();
+    restoreMemory();
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("bad threw"));
   });
 });

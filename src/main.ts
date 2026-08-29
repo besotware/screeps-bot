@@ -13,6 +13,17 @@ import { runSpawn } from "./runtime/spawning";
 import { buildReport, drawOverlay, reportRoom } from "./runtime/telemetry";
 import { runTower } from "./runtime/towers";
 import { assessRoom, considerSafeMode } from "./runtime/threat";
+import { cpuPressure, describePressure, shouldRun } from "./domain/cpu";
+import type { CpuState } from "./domain/cpu";
+
+/** Read the current CPU position. Cheap, and called several times a tick. */
+function cpu(): CpuState {
+  return {
+    bucket: Game.cpu.bucket ?? 0,
+    limit: Game.cpu.limit,
+    used: Game.cpu.getUsed(),
+  };
+}
 
 export function loop(): void {
   const pruned = pruneCreepMemory(Memory.creeps, Game.creeps);
@@ -31,7 +42,9 @@ export function loop(): void {
 
   for (const room of rooms.values()) {
     guard(`plan ${room.name}`, () => {
-      if (shouldPlan(Game.time)) planRoom(room);
+      // Planning is the first thing dropped under CPU pressure: a tick without
+      // a construction plan costs nothing that a later tick cannot recover.
+      if (shouldPlan(Game.time) && shouldRun("build", cpu())) planRoom(room);
     });
 
     // Defence before anything economic: a room being lost does not benefit
@@ -60,7 +73,13 @@ export function loop(): void {
   }
 
   // Telemetry last, so CPU reflects the whole tick.
+  const state = cpu();
+  if (cpuPressure(state) !== "healthy") {
+    console.log(`[cpu] ${describePressure(state)}`);
+  }
+
   for (const room of rooms.values()) {
+    if (!shouldRun("telemetry", cpu())) continue;
     guard(`report ${room.name}`, () => {
       const roomCreeps = creeps.filter((c) => c.memory.home === room.name);
       const report = buildReport(room, roomCreeps);
