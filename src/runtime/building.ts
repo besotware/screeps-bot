@@ -5,7 +5,13 @@
  * (domain/construction); this handles the game API and the rate limiting.
  */
 
-import { extensionsAllowed, planExtensions, planSourceContainer } from "../domain/construction";
+import {
+  extensionsAllowed,
+  planControllerContainer,
+  planExtensions,
+  planRoadTiles,
+  planSourceContainer,
+} from "../domain/construction";
 import { containerNear, tileLookup } from "./projection";
 
 /**
@@ -53,8 +59,65 @@ export function planRoom(room: Room): number {
     }
   }
 
+  // The controller container is what lets upgraders stop walking. Worth more
+  // than another extension at the same RCL.
+  if (budget > 0 && room.controller && !containerNear(room.controller.pos)) {
+    const spot = planControllerContainer(room.controller.pos, spawn.pos, lookup);
+    if (spot && room.createConstructionSite(spot.x, spot.y, STRUCTURE_CONTAINER) === OK) {
+      console.log(`[build] ${room.name} controller container at ${spot.x},${spot.y}`);
+      placed += 1;
+      budget -= 1;
+    }
+  }
+
+  if (budget > 0) {
+    const paved = planRoads(room, spawn, budget, lookup);
+    placed += paved;
+    budget -= paved;
+  }
+
   if (budget > 0) placed += planExtensionSites(room, spawn, budget, lookup);
 
+  return placed;
+}
+
+/**
+ * Pave the routes haulers actually walk: spawn to each source, and spawn to the
+ * controller.
+ *
+ * Roads only pay for themselves on repeated traffic, so we pave exactly the
+ * routes the logistics loop uses and nothing else. Anything decorative is
+ * decay cost forever.
+ */
+function planRoads(
+  room: Room,
+  spawn: StructureSpawn,
+  budget: number,
+  lookup: ReturnType<typeof tileLookup>,
+): number {
+  const destinations: RoomPosition[] = room.find(FIND_SOURCES).map((s) => s.pos);
+  if (room.controller) destinations.push(room.controller.pos);
+
+  let placed = 0;
+
+  for (const destination of destinations) {
+    if (placed >= budget) break;
+
+    const path = room.findPath(spawn.pos, destination, {
+      ignoreCreeps: true,
+      swampCost: 2,
+      range: 1,
+    });
+
+    for (const step of planRoadTiles(path, lookup)) {
+      if (placed >= budget) break;
+      if (room.createConstructionSite(step.x, step.y, STRUCTURE_ROAD) === OK) {
+        placed += 1;
+      }
+    }
+  }
+
+  if (placed > 0) console.log(`[build] ${room.name} queued ${placed} road tiles`);
   return placed;
 }
 

@@ -224,12 +224,22 @@ function runBuilder(creep: Creep): void {
 }
 
 function runUpgrader(creep: Creep): void {
+  const controller = creep.room.controller;
+
   if (syncWorkMode(creep) === "gathering") {
+    // Draw from the controller container if there is one: an upgrader that
+    // never leaves the controller is worth several that commute.
+    const store = controller ? containerNear(controller.pos) : undefined;
+    if (store && store.store.getUsedCapacity(RESOURCE_ENERGY) > 0) {
+      if (creep.withdraw(store, RESOURCE_ENERGY) === ERR_NOT_IN_RANGE) {
+        creep.moveTo(store, MOVE_OPTS);
+      }
+      return;
+    }
     if (!collect(creep)) gather(creep);
     return;
   }
 
-  const controller = creep.room.controller;
   if (!controller) return;
 
   if (creep.upgradeController(controller) === ERR_NOT_IN_RANGE) {

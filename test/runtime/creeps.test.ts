@@ -36,6 +36,9 @@ interface BuildOptions {
   /** Whether the assigned source has a container, and whether we stand on it. */
   readonly minerContainer?: boolean;
   readonly minerOnContainer?: boolean;
+  /** Whether a container sits by the controller, for upgrader stationing. */
+  readonly controllerContainer?: boolean;
+  readonly controllerContainerEnergy?: number;
 }
 
 function build(options: BuildOptions = {}): {
@@ -59,6 +62,8 @@ function build(options: BuildOptions = {}): {
     sourceId = undefined,
     minerContainer = true,
     minerOnContainer = true,
+    controllerContainer = false,
+    controllerContainerEnergy = 2000,
   } = options;
 
   const rec: Recorded = {
@@ -130,7 +135,29 @@ function build(options: BuildOptions = {}): {
     return o;
   });
 
-  const controller = hasController ? { id: "ctrl", level: 2 } : undefined;
+  const controller = hasController
+    ? {
+        id: "ctrl",
+        level: 2,
+        pos: {
+          x: 40,
+          y: 40,
+          findInRange: (type: unknown, _r: number, opts?: { filter?: (s: unknown) => boolean }) => {
+            if (type !== FIND_STRUCTURES) return [];
+            const c = controllerContainer
+              ? [
+                  {
+                    structureType: STRUCTURE_CONTAINER,
+                    id: "ctrl-cont",
+                    store: { getUsedCapacity: () => controllerContainerEnergy },
+                  },
+                ]
+              : [];
+            return opts?.filter ? c.filter(opts.filter) : c;
+          },
+        },
+      }
+    : undefined;
   if (controller) registry.set("ctrl", controller);
 
   const site = constructionSite ? { id: constructionSite } : null;
@@ -496,5 +523,85 @@ describe("upgrader", () => {
     expect(() => runCreep(creep)).not.toThrow();
     restore();
     expect(rec.upgrade).toHaveLength(0);
+  });
+});
+
+describe("upgrader stationed at the controller container", () => {
+  it("withdraws from the controller container instead of commuting", () => {
+    const { creep, rec, restore } = build({
+      role: "upgrader",
+      mode: "gathering",
+      controllerContainer: true,
+      pickups: [["far-cont", "container", 5000]],
+    });
+    runCreep(creep);
+    restore();
+    expect(rec.withdraw).toHaveLength(1);
+    expect(rec.harvest).toHaveLength(0);
+  });
+
+  it("moves to the controller container when out of range", () => {
+    const { creep, rec, restore } = build({
+      role: "upgrader",
+      mode: "gathering",
+      controllerContainer: true,
+      actionResult: ERR_NOT_IN_RANGE,
+    });
+    runCreep(creep);
+    restore();
+    expect(rec.moveTo).toHaveLength(1);
+  });
+
+  it("falls back to normal collection when the controller container is empty", () => {
+    const { creep, rec, restore } = build({
+      role: "upgrader",
+      mode: "gathering",
+      controllerContainer: true,
+      controllerContainerEnergy: 0,
+      pickups: [["far-cont", "container", 5000]],
+    });
+    runCreep(creep);
+    restore();
+    // Withdrew from the general pickup, not the empty controller container.
+    expect(rec.withdraw).toHaveLength(1);
+  });
+
+  it("falls back to mining when there is no controller container at all", () => {
+    const { creep, rec, restore } = build({
+      role: "upgrader",
+      mode: "gathering",
+      controllerContainer: false,
+    });
+    runCreep(creep);
+    restore();
+    expect(rec.harvest).toHaveLength(1);
+  });
+});
+
+describe("collect distinguishes pickup from withdraw", () => {
+  it("picks up loose energy rather than trying to withdraw from the floor", () => {
+    // pickup() and withdraw() are different API calls; using the wrong one on
+    // dropped energy silently fails every tick.
+    const { creep, rec, restore } = build({
+      role: "hauler",
+      mode: "gathering",
+      pickups: [["floor", "dropped", 300]],
+    });
+    runCreep(creep);
+    restore();
+    expect(rec.pickup).toHaveLength(1);
+    expect(rec.withdraw).toHaveLength(0);
+  });
+
+  it("withdraws from a tombstone rather than picking it up", () => {
+    const { creep, rec, restore } = build({
+      role: "hauler",
+      mode: "gathering",
+      pickups: [["grave", "tombstone", 300]],
+    });
+    runCreep(creep);
+    restore();
+    expect(rec.withdraw).toHaveLength(1);
+    expect(rec.pickup).toHaveLength(0);
   });
 });

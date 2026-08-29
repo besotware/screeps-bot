@@ -174,9 +174,10 @@ describe("build planning against hostile geometry", () => {
     const placed: unknown[] = [];
     const room = {
       name: "W1N1",
-      controller: { level: 1 },
+      controller: { level: 1, pos: { x: 40, y: 40, findInRange: () => [] } },
       // Every tile is wall, so planSourceContainer finds nowhere to build.
       getTerrain: () => ({ get: () => TERRAIN_MASK_WALL }),
+      findPath: () => [],
       lookForAt: () => [],
       createConstructionSite: (...args: unknown[]) => {
         placed.push(args);
@@ -200,8 +201,9 @@ describe("build planning against hostile geometry", () => {
   it("does not count a container site the game rejected", () => {
     const room = {
       name: "W1N1",
-      controller: { level: 1 },
+      controller: { level: 1, pos: { x: 40, y: 40, findInRange: () => [] } },
       getTerrain: () => ({ get: () => 0 }),
+      findPath: () => [],
       lookForAt: () => [],
       createConstructionSite: () => -7, // ERR_INVALID_TARGET
       find: (type: number, opts?: { filter?: (s: unknown) => boolean }) => {

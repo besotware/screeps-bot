@@ -256,3 +256,57 @@ describe("decideTowerAction — healing", () => {
     ).toEqual({ kind: "idle" });
   });
 });
+
+describe("repair ranking corner cases", () => {
+  it("ranks two barriers against each other by absolute hits", () => {
+    const ranked = rankRepairs([
+      damaged({ id: "strong", structureType: "rampart", hits: 15_000, hitsMax: 1e9 }),
+      damaged({ id: "weak", structureType: "rampart", hits: 100, hitsMax: 1e9 }),
+    ]);
+    expect(ranked.map((s) => s.id)).toEqual(["weak", "strong"]);
+  });
+
+  it("ranks two walls against each other the same way", () => {
+    const ranked = rankRepairs([
+      damaged({ id: "w-strong", structureType: "constructedWall", hits: 19_000, hitsMax: 1e9 }),
+      damaged({ id: "w-weak", structureType: "constructedWall", hits: 5, hitsMax: 1e9 }),
+    ]);
+    expect(ranked[0]?.id).toBe("w-weak");
+  });
+
+  it("breaks a barrier tie deterministically on id", () => {
+    const input = [
+      damaged({ id: "b", structureType: "rampart", hits: 100, hitsMax: 1e9 }),
+      damaged({ id: "a", structureType: "rampart", hits: 100, hitsMax: 1e9 }),
+    ];
+    expect(rankRepairs(input).map((s) => s.id)).toEqual(["a", "b"]);
+    expect(rankRepairs([...input].reverse()).map((s) => s.id)).toEqual(["a", "b"]);
+  });
+
+  it("puts a barrier after a real structure even when the barrier is worse", () => {
+    const ranked = rankRepairs([
+      damaged({ id: "rampart", structureType: "rampart", hits: 1, hitsMax: 1e9 }),
+      damaged({ id: "container", structureType: "container", hits: 1, hitsMax: 1000 }),
+    ]);
+    expect(ranked.map((s) => s.id)).toEqual(["container", "rampart"]);
+  });
+
+  it("keeps a barrier that is already at target out of the list", () => {
+    expect(
+      rankRepairs([
+        damaged({ id: "ok", structureType: "rampart", hits: RAMPART_TARGET_HITS, hitsMax: 1e9 }),
+      ]),
+    ).toEqual([]);
+  });
+});
+
+describe("selectHostile with mixed healers", () => {
+  it("breaks a healer tie deterministically on id", () => {
+    const input = [
+      hostile({ id: "h-b", range: 4, healParts: 2 }),
+      hostile({ id: "h-a", range: 4, healParts: 5 }),
+    ];
+    expect(selectHostile(input)?.id).toBe("h-a");
+    expect(selectHostile([...input].reverse())?.id).toBe("h-a");
+  });
+});

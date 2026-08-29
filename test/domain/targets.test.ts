@@ -189,3 +189,37 @@ describe("selectEnergySource", () => {
     expect(selectEnergySource([...input].reverse())?.id).toBe("a");
   });
 });
+
+describe("sink and pickup ordering corner cases", () => {
+  it("ranks two unknown structure types against each other by range", () => {
+    const ranked = rankEnergySinks([
+      sink({ id: "far", structureType: "nuker", range: 20 }),
+      sink({ id: "near", structureType: "lab", range: 2 }),
+    ]);
+    expect(ranked.map((s) => s.id)).toEqual(["near", "far"]);
+  });
+
+  it("keeps a tower ahead of an unknown structure", () => {
+    const ranked = rankEnergySinks([
+      sink({ id: "lab", structureType: "lab", range: 1 }),
+      sink({ id: "tower", structureType: "tower", range: 20 }),
+    ]);
+    expect(ranked[0]?.id).toBe("tower");
+  });
+
+  it("breaks an id tie on the greater-than branch as well as the less-than one", () => {
+    // Both orderings must produce the same result, which exercises both arms
+    // of the comparator rather than only the first.
+    const input = [sink({ id: "aaa" }), sink({ id: "bbb" }), sink({ id: "ccc" })];
+    expect(rankEnergySinks(input).map((s) => s.id)).toEqual(["aaa", "bbb", "ccc"]);
+    expect(rankEnergySinks([...input].reverse()).map((s) => s.id)).toEqual(["aaa", "bbb", "ccc"]);
+  });
+
+  it("prefers a nearer source when open spots and range both tie on id order", () => {
+    const input = [
+      source({ id: "zzz", range: 5, openSpots: 2 }),
+      source({ id: "aaa", range: 5, openSpots: 2 }),
+    ];
+    expect(selectEnergySource(input)?.id).toBe("aaa");
+  });
+});

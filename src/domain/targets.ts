@@ -74,8 +74,26 @@ export interface EnergyPickup {
   readonly range: number;
 }
 
-/** Pickup kinds that decay, and so should be cleared before stored energy. */
-const PERISHABLE = new Set(["dropped", "tombstone"]);
+/**
+ * Collection order. Lower is collected first.
+ *
+ * Dropped energy and tombstones decay every tick, so they come first. Then
+ * containers, which are working buffers meant to be drained. Storage is the
+ * bank and comes last -- draining it to fill an extension that a container
+ * could have filled just moves energy in a circle.
+ */
+const PICKUP_TIER: Readonly<Record<string, number>> = Object.freeze({
+  dropped: 0,
+  tombstone: 0,
+  container: 1,
+  storage: 2,
+});
+
+const DEFAULT_PICKUP_TIER = 1;
+
+export function pickupTier(kind: string): number {
+  return PICKUP_TIER[kind] ?? DEFAULT_PICKUP_TIER;
+}
 
 /**
  * Pick where a hauler should collect from.
@@ -92,8 +110,8 @@ export function selectPickup(
   const viable = pickups.filter((p) => p.amount > 0 && p.amount >= minimumAmount);
   if (viable.length === 0) return undefined;
 
-  const perishable = viable.filter((p) => PERISHABLE.has(p.kind));
-  const pool = perishable.length > 0 ? perishable : viable;
+  const bestTier = Math.min(...viable.map((p) => pickupTier(p.kind)));
+  const pool = viable.filter((p) => pickupTier(p.kind) === bestTier);
 
   return pool.reduce((best, p) => {
     if (p.amount !== best.amount) return p.amount > best.amount ? p : best;

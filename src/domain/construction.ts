@@ -130,6 +130,64 @@ export function planSourceContainer(
   });
 }
 
+/**
+ * Where to put the controller container.
+ *
+ * Two tiles out from the controller, not adjacent: adjacent tiles are where
+ * upgraders need to stand, and a container occupying one of them costs a
+ * working position forever. Upgraders stand between the two.
+ */
+export function planControllerContainer(
+  controller: Point,
+  anchor: Point,
+  lookup: (p: Point) => TileView,
+): Point | undefined {
+  const candidates: Point[] = [];
+
+  for (let dx = -2; dx <= 2; dx++) {
+    for (let dy = -2; dy <= 2; dy++) {
+      // Ring 2 exactly.
+      if (Math.max(Math.abs(dx), Math.abs(dy)) !== 2) continue;
+      const x = controller.x + dx;
+      const y = controller.y + dy;
+      if (x < 2 || x > 47 || y < 2 || y > 47) continue;
+      const tile = lookup({ x, y });
+      if (tile.wall || tile.occupied) continue;
+      candidates.push({ x, y });
+    }
+  }
+
+  if (candidates.length === 0) return undefined;
+
+  return candidates.reduce((best, p) => {
+    const dBest = chebyshev(best, anchor);
+    const dP = chebyshev(p, anchor);
+    if (dP !== dBest) return dP < dBest ? p : best;
+    if (p.x !== best.x) return p.x < best.x ? p : best;
+    return p.y < best.y ? p : best;
+  });
+}
+
+/**
+ * Which tiles along a path are worth paving.
+ *
+ * Skips the endpoints -- a road under the spawn or on the source itself buys
+ * nothing -- and skips tiles that already hold something. Roads halve fatigue,
+ * so they pay for themselves on any route a hauler walks repeatedly, but
+ * paving a tile nobody crosses is pure decay cost.
+ */
+export function planRoadTiles(
+  path: readonly Point[],
+  lookup: (p: Point) => TileView,
+): Point[] {
+  if (path.length <= 2) return [];
+
+  return path.slice(1, -1).filter((p) => {
+    const tile = lookup(p);
+    return !tile.wall && !tile.occupied;
+  });
+}
+
 /** Screeps range: diagonal moves cost the same as orthogonal ones. */
 export function chebyshev(a: Point, b: Point): number {
   return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
