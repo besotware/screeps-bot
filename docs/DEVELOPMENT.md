@@ -213,8 +213,16 @@ being replaced once every source has a miner. Builders appear whenever there is
 something to build or repair and fall back to upgrading when idle. Towers, once
 you reach RCL 3, shoot healers first and repair only above a 300-energy reserve.
 
+Once a container finishes by a source, watch the census line: `har` falls to
+zero as `min` and `hau` rise. That handover is the most interesting thing the
+bot does.
+
+If a hostile arrives, `def` appears and jumps the spawn queue ahead of every
+economic role. Under real damage the economic creeps retreat toward the spawn
+and say `!`.
+
 Useful console filters while watching: `[spawn]`, `[build]`, `[tower]`,
-`[memory]`, and `threw` for the guard messages.
+`[memory]`, `[cpu]`, `[SAFE MODE]`, and `threw` for the guard messages.
 
 ## Repository layout
 

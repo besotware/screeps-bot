@@ -1,5 +1,55 @@
 # Progress
 
+## Bot capability — complete for a single room (2026-08-28)
+
+The bot now runs an owned room end to end without supervision: it bootstraps,
+transitions to a static-miner economy, builds its own infrastructure, defends
+itself, and manages its own CPU. 497 tests.
+
+### What it does
+
+| Area | Behaviour |
+| --- | --- |
+| Economy | Harvester bootstrap, then static miners on source containers plus haulers |
+| Construction | Source containers, controller container, roads on used routes, extensions to the RCL cap |
+| Defence | Threat classification, defenders that preempt the spawn queue, tower policy, safe mode |
+| Survival | Economic creeps evacuate under real damage; the loop guards every unit of work |
+| Logistics | Tiered collection: decaying energy, then containers, then storage |
+| CPU | Sheds telemetry, then planning, under bucket pressure; never sheds defence or spawning |
+| Observability | One console line per room plus an in-client overlay |
+
+### Deliberate design points
+
+**Static miners over generalist harvesters.** A miner never walks and its WORK
+parts are never idle. The handover is gated on containers existing, and keeps
+one harvester alive during a partial transition so a container-less source is
+never stranded.
+
+**Defence preempts deficit ranking.** Deficit-first is the right rule for an
+economy and exactly the wrong one under attack -- being four harvesters short is
+irrelevant if the spawn is being chewed on.
+
+**Safe mode is hard to trigger.** Player attack only, and only once the spawn is
+below half. NPC invaders leave on their own; an activation spent on one is
+unavailable when a real player arrives.
+
+**Defenders do not chase.** Being drawn beyond tower cover by bait is how a
+defender dies alone.
+
+### Not built
+
+Deliberately out of scope so far, in rough order of value:
+
+- Remote mining in adjacent rooms (reserving, remote miners and haulers)
+- Room claiming and multi-room expansion
+- Links (RCL 5+), which would remove most hauling
+- Rampart and wall construction; the tower repairs them but nothing builds them
+- Terminal, market, labs, boosts, nukes
+
+The bot is complete for one room. It is not a competitive multi-room player.
+
+---
+
 ## Colony feature work — 2026-08-28
 
 Feature code added between phases, at your request, so there is something to
