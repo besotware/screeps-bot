@@ -27,6 +27,7 @@ export interface ColonyReport {
 
 /** Short role tags, so the census fits one console line. */
 const TAG: Readonly<Record<Role, string>> = {
+  defender: "def",
   harvester: "har",
   miner: "min",
   hauler: "hau",

@@ -259,3 +259,60 @@ describe("loop", () => {
     restoreMemory();
   });
 });
+
+describe("loop under attack", () => {
+  let logSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+  });
+  afterEach(() => logSpy.mockRestore());
+
+  it("considers safe mode when the room is being attacked", () => {
+    const room = fakeRoom({ sourceCount: 1 });
+    (room as unknown as { controller: unknown }).controller = {
+      my: true,
+      level: 3,
+      progress: 0,
+      progressTotal: 100,
+      pos: { x: 30, y: 30 },
+      safeModeAvailable: 3,
+      safeModeCooldown: 0,
+      safeMode: 0,
+      activateSafeMode: () => OK,
+    };
+    (room as unknown as { find: unknown }).find = (
+      type: number,
+      opts?: { filter?: (s: unknown) => boolean },
+    ) => {
+      let out: readonly unknown[] = [];
+      if (type === FIND_HOSTILE_CREEPS) {
+        out = [
+          {
+            id: "raider",
+            hits: 1000,
+            owner: { username: "SomePlayer" },
+            body: Array.from({ length: 10 }, () => ({ type: ATTACK })),
+          },
+        ];
+      } else if (type === FIND_MY_SPAWNS) {
+        out = [{ id: "s1", hits: 500, hitsMax: 5000, pos: { x: 20, y: 20 } }];
+      }
+      return opts?.filter ? out.filter(opts.filter) : out;
+    };
+
+    const restoreMemory = installMemory({});
+    const restoreGame = installGame({
+      time: 9,
+      creeps: {},
+      spawns: { a: fakeSpawnIn(room) },
+      cpu: CPU,
+    });
+
+    expect(() => loop()).not.toThrow();
+
+    restoreGame();
+    restoreMemory();
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("SAFE MODE"));
+  });
+});

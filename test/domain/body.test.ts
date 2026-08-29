@@ -108,3 +108,12 @@ describe("orderForSurvivability", () => {
     expect(input).toEqual([MOVE, TOUGH]);
   });
 });
+
+describe("scaleBody with a nonsense pattern", () => {
+  it("returns nothing rather than an infinite body", () => {
+    // An unknown part prices as NaN. The repeats check must catch that instead
+    // of producing Infinity repetitions.
+    const bogus = ["not-a-part"] as unknown as BodyPartConstant[];
+    expect(scaleBody(bogus, 10_000)).toEqual([]);
+  });
+});

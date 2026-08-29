@@ -194,3 +194,29 @@ describe("runSpawn — miner assignment", () => {
     expect(calls[0]?.opts?.memory).not.toHaveProperty("sourceId");
   });
 });
+
+describe("runSpawn — unaffordable without an emergency", () => {
+  let restoreGame: () => void;
+  let logSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    restoreGame = installGame({ time: 3000 });
+    logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+  });
+  afterEach(() => {
+    restoreGame();
+    logSpy.mockRestore();
+  });
+
+  it("declines quietly when the bank is full but buys nothing", () => {
+    // Full bank of 100 clears the budget check, yet 100 buys no harvester.
+    // Not a bootstrap emergency, because a creep is alive -- so it must decline
+    // silently rather than logging a stall every single tick.
+    const room = fakeRoom({ energyAvailable: 100, energyCapacityAvailable: 100 });
+    const { spawn, calls } = fakeSpawn(room);
+
+    expect(runSpawn(spawn, [fakeCreep("harvester")])).toBeUndefined();
+    expect(calls).toHaveLength(0);
+    expect(logSpy).not.toHaveBeenCalledWith(expect.stringContaining("bootstrap stalled"));
+  });
+});

@@ -18,6 +18,7 @@ const needs = (over: Partial<ColonyNeeds> = {}): ColonyNeeds => ({
   constructionSiteCount: 0,
   repairTargetCount: 0,
   hasStorage: false,
+  defendersWanted: 0,
   ...over,
 });
 

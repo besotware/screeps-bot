@@ -8,6 +8,7 @@ import type { Role } from "../domain/roles";
 import { nextSourceForMiner } from "../domain/assignment";
 import { isBootstrapEmergency, spawnBudget } from "../domain/state";
 import { projectNeeds, projectRoom, projectSourceSlots } from "./projection";
+import { assessRoom, defendersNeeded } from "./threat";
 
 export interface SpawnOutcome {
   readonly role: Role;
@@ -34,7 +35,10 @@ export function runSpawn(
   const snapshot = projectRoom(spawn.room, roomCreeps.length);
 
   const current = tallyCensus(roomCreeps.map((creep) => creep.memory.role));
-  const desired = desiredCensus(projectNeeds(spawn.room));
+  const assessment = assessRoom(spawn.room);
+  const desired = desiredCensus(
+    projectNeeds(spawn.room, defendersNeeded(spawn.room, assessment)),
+  );
 
   const role = nextRoleToSpawn(current, desired);
   if (!role) return undefined;

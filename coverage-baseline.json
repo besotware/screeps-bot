@@ -1,7 +1,7 @@
 {
-  "statements": 99.56,
-  "branches": 94.08,
+  "statements": 99.75,
+  "branches": 95.12,
   "functions": 100,
-  "lines": 99.54,
-  "updated": "2026-08-28"
+  "lines": 99.74,
+  "updated": "2026-08-29"
 }

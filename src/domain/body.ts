@@ -58,8 +58,11 @@ export function scaleBody(
 ): BodyPartConstant[] {
   if (pattern.length === 0) return [];
 
+  // No guard on a zero unit cost: every body part costs at least 10, and the
+  // empty-pattern case is already handled above, so it cannot happen. A
+  // nonsense part would make the cost NaN, and the repeats < 1 check below
+  // catches that.
   const unitCost = bodyCost(pattern);
-  if (unitCost <= 0) return [];
 
   const affordable = Math.floor(energy / unitCost);
   const partLimit = Math.floor(MAX_BODY_PARTS / pattern.length);

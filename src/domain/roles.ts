@@ -11,9 +11,9 @@
  * walks and its WORK parts are never idle.
  */
 
-import { CARRY, MOVE, WORK, bodyCost, scaleBody } from "./body";
+import { ATTACK, CARRY, MOVE, TOUGH, WORK, bodyCost, scaleBody } from "./body";
 
-export const ROLES = ["harvester", "miner", "hauler", "builder", "upgrader"] as const;
+export const ROLES = ["defender", "harvester", "miner", "hauler", "builder", "upgrader"] as const;
 export type Role = (typeof ROLES)[number];
 
 /** How many creeps of each role currently exist, keyed by role. */
@@ -32,32 +32,48 @@ export interface RoleSpec {
   readonly priority: number;
   /** Cap on pattern repetitions, so one role cannot eat the whole room budget. */
   readonly maxRepeats: number;
+  /**
+   * When true, a shortfall in this role is filled before any other role,
+   * regardless of how large the other deficits are. Reserved for defence: a
+   * room being eaten does not care that it is also short four harvesters.
+   */
+  readonly preempts?: boolean;
 }
 
 export const ROLE_SPECS: Readonly<Record<Role, RoleSpec>> = Object.freeze({
+  // Melee defender. TOUGH at the front soaks the first hits; the game applies
+  // damage in body order, so the ordering here is load-bearing, not cosmetic.
+  defender: {
+    base: [TOUGH, MOVE],
+    pattern: [ATTACK, MOVE],
+    priority: 0,
+    maxRepeats: 5,
+    preempts: true,
+  },
+
   // Generalist bootstrap creep. Mines and carries. Inefficient, but it is the
   // only role that works in a room with no infrastructure at all.
-  harvester: { base: [], pattern: [WORK, CARRY, MOVE], priority: 0, maxRepeats: 5 },
+  harvester: { base: [], pattern: [WORK, CARRY, MOVE], priority: 1, maxRepeats: 5 },
 
   // Static. Parks on a source container and never moves again, so one MOVE is
   // all it will ever need. Five WORK saturates a source (10 energy/tick), so
   // more than that is waste.
-  miner: { base: [MOVE], pattern: [WORK], priority: 1, maxRepeats: 5 },
+  miner: { base: [MOVE], pattern: [WORK], priority: 2, maxRepeats: 5 },
 
   // Moves energy from source containers to wherever it is needed. Two CARRY per
   // MOVE keeps it at half speed loaded, which is fine on roads and cheap.
-  hauler: { base: [], pattern: [CARRY, CARRY, MOVE], priority: 2, maxRepeats: 5 },
+  hauler: { base: [], pattern: [CARRY, CARRY, MOVE], priority: 3, maxRepeats: 5 },
 
   // Builds and repairs. Idles as an upgrader when there is nothing to build.
-  builder: { base: [], pattern: [WORK, CARRY, MOVE], priority: 4, maxRepeats: 4 },
+  builder: { base: [], pattern: [WORK, CARRY, MOVE], priority: 5, maxRepeats: 4 },
 
   // Converts surplus into RCL. Work-heavy, low mobility needs.
-  upgrader: { base: [], pattern: [WORK, WORK, CARRY, MOVE], priority: 3, maxRepeats: 4 },
+  upgrader: { base: [], pattern: [WORK, WORK, CARRY, MOVE], priority: 4, maxRepeats: 4 },
 });
 
 /** An all-zero census, used as a reduce seed and as a test fixture. */
 export function emptyCensus(): Census {
-  return { harvester: 0, miner: 0, hauler: 0, builder: 0, upgrader: 0 };
+  return { defender: 0, harvester: 0, miner: 0, hauler: 0, builder: 0, upgrader: 0 };
 }
 
 /** Tally live creeps by role. Unknown or missing roles are ignored, not thrown. */
@@ -83,6 +99,8 @@ export interface ColonyNeeds {
   /** Structures below the repair threshold. */
   readonly repairTargetCount: number;
   readonly hasStorage: boolean;
+  /** Defenders wanted right now, from the threat assessment. */
+  readonly defendersWanted: number;
 }
 
 /**
@@ -126,7 +144,14 @@ export function desiredCensus(needs: ColonyNeeds): Census {
   if (needs.hasStorage) upgrader = 3;
   if (needs.controllerLevel >= 8) upgrader = 1; // RCL8 caps controller input
 
-  return { harvester, miner, hauler, builder, upgrader };
+  return {
+    defender: Math.max(0, needs.defendersWanted),
+    harvester,
+    miner,
+    hauler,
+    builder,
+    upgrader,
+  };
 }
 
 /**
@@ -140,7 +165,13 @@ export function nextRoleToSpawn(current: Census, desired: Census): Role | undefi
   const short = ROLES.filter((role) => current[role] < desired[role]);
   if (short.length === 0) return undefined;
 
-  return short.reduce((best, role) => {
+  // Defence jumps the queue outright. Deficit-ranking is the right rule for an
+  // economy and exactly the wrong one under attack, where being four
+  // harvesters short is irrelevant if the spawn is being chewed on.
+  const preempting = short.filter((role) => ROLE_SPECS[role].preempts);
+  const pool = preempting.length > 0 ? preempting : short;
+
+  return pool.reduce((best, role) => {
     const bestDeficit = desired[best] - current[best];
     const roleDeficit = desired[role] - current[role];
     if (roleDeficit > bestDeficit) return role;

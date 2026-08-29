@@ -12,6 +12,7 @@ import { pruneCreepMemory } from "./runtime/memory";
 import { runSpawn } from "./runtime/spawning";
 import { buildReport, drawOverlay, reportRoom } from "./runtime/telemetry";
 import { runTower } from "./runtime/towers";
+import { assessRoom, considerSafeMode } from "./runtime/threat";
 
 export function loop(): void {
   const pruned = pruneCreepMemory(Memory.creeps, Game.creeps);
@@ -31,6 +32,15 @@ export function loop(): void {
   for (const room of rooms.values()) {
     guard(`plan ${room.name}`, () => {
       if (shouldPlan(Game.time)) planRoom(room);
+    });
+
+    // Defence before anything economic: a room being lost does not benefit
+    // from a well-planned extension layout.
+    guard(`defence ${room.name}`, () => {
+      const assessment = assessRoom(room);
+      if (assessment.level !== "none") {
+        considerSafeMode(room, assessment);
+      }
     });
 
     guard(`towers ${room.name}`, () => {

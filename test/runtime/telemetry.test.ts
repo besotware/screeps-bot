@@ -6,7 +6,7 @@ import {
 } from "../../src/runtime/telemetry";
 import { fakeCreep, fakeRoom, installGame, installScreepsConstants } from "../helpers/mockGame";
 import type { ColonyReport } from "../../src/domain/stats";
-import { emptyCensus } from "../../src/domain/roles";
+import { ROLES, emptyCensus } from "../../src/domain/roles";
 
 installScreepsConstants();
 
@@ -111,8 +111,9 @@ describe("drawOverlay", () => {
 
     drawOverlay(room, report());
 
-    // RCL, energy, CPU, plus five roles.
-    expect(calls).toHaveLength(8);
+    // RCL, energy, CPU, plus one line per role. Derived from ROLES so adding a
+    // role does not silently break this assertion into a magic number.
+    expect(calls).toHaveLength(3 + ROLES.length);
   });
 
   it("colours a shortfall differently from a satisfied role", () => {

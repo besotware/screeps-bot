@@ -11,7 +11,7 @@ export default {
   },
   collectCoverageFrom: ["src/**/*.ts", "!src/**/*.d.ts"],
   // json-summary is what the Phase 1 coverage ratchet will read.
-  coverageReporters: ["text", "json-summary", "lcov"],
+  coverageReporters: ["text", "json-summary", "json", "lcov"],
   clearMocks: true,
   restoreMocks: true,
 };

@@ -6,6 +6,7 @@ import { desiredCensus, tallyCensus } from "../domain/roles";
 import { formatReport, hasShortfall } from "../domain/stats";
 import type { ColonyReport } from "../domain/stats";
 import { projectNeeds } from "./projection";
+import { assessRoom, defendersNeeded } from "./threat";
 
 /** Print every N ticks even when nothing is wrong, so the log shows progress. */
 export const REPORT_INTERVAL = 25;
@@ -25,7 +26,9 @@ export function buildReport(room: Room, creeps: readonly Creep[]): ColonyReport 
     energyAvailable: room.energyAvailable,
     energyCapacity: room.energyCapacityAvailable,
     current: tallyCensus(creeps.map((c) => c.memory.role)),
-    desired: desiredCensus(projectNeeds(room)),
+    desired: desiredCensus(
+      projectNeeds(room, defendersNeeded(room, assessRoom(room))),
+    ),
     constructionSites: room.find(FIND_MY_CONSTRUCTION_SITES).length,
     cpuUsed: Game.cpu.getUsed(),
     cpuLimit: Game.cpu.limit,

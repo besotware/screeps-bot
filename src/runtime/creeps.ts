@@ -6,6 +6,8 @@
 import { nextWorkMode } from "../domain/state";
 import { selectEnergySink, selectEnergySource, selectPickup } from "../domain/targets";
 import { rankRepairs } from "../domain/defense";
+import { runDefender } from "./defenders";
+import { evacuationPoint, roomThreat, shouldEvacuate } from "./threat";
 import type { Role } from "../domain/roles";
 import {
   containerNear,
@@ -27,7 +29,18 @@ export function runCreep(creep: Creep): void {
   if (creep.spawning) return;
 
   const role = creep.memory.role as Role | undefined;
+
+  // Defenders run toward the problem; everyone else runs away from it. An
+  // economic creep caught in the open is a free kill and a wasted body.
+  if (role !== "defender" && shouldEvacuate(roomThreat(creep.room))) {
+    flee(creep);
+    return;
+  }
+
   switch (role) {
+    case "defender":
+      runDefender(creep);
+      return;
     case "harvester":
       runHarvester(creep);
       return;
@@ -48,6 +61,21 @@ export function runCreep(creep: Creep): void {
       // rather than silently idling a creep for its whole 1500-tick life.
       console.log(`[creeps] ${creep.name} has unknown role ${String(role)}`);
       return;
+  }
+}
+
+/**
+ * Retreat toward the spawn, where towers cover the ground.
+ *
+ * Deliberately not "run for the exit": leaving the room abandons the colony
+ * and the creep usually dies in the corridor anyway.
+ */
+function flee(creep: Creep): void {
+  const refuge = evacuationPoint(creep.room);
+  if (!refuge) return;
+  if (creep.pos.getRangeTo(refuge) > 3) {
+    creep.moveTo(refuge, MOVE_OPTS);
+    creep.say("!");
   }
 }
 

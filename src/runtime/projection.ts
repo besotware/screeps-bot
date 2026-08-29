@@ -24,9 +24,15 @@ export function projectRoom(room: Room, creepCount: number): RoomSnapshot {
   };
 }
 
-/** Everything the spawn planner needs, in one room scan. */
-export function projectNeeds(room: Room): ColonyNeeds {
+/**
+ * Everything the spawn planner needs, in one room scan.
+ *
+ * `defendersWanted` is passed in rather than computed here, so this module
+ * stays a dumb projection and the threat assessment stays in one place.
+ */
+export function projectNeeds(room: Room, defendersWanted = 0): ColonyNeeds {
   return {
+    defendersWanted,
     controllerLevel: room.controller?.level ?? 0,
     sourceCount: room.find(FIND_SOURCES).length,
     sourceContainerCount: projectSourceSlots(room).filter((s) => s.hasContainer).length,
